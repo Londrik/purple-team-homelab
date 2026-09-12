@@ -1,55 +1,38 @@
-# Purple Team Homelab: Deteção e Resposta
+# Purple Team Homelab 🛡️⚔️
 
-Ambiente automatizado para simulação de ataques web (Red Team) e engenharia de deteção com Elastic Stack (Blue Team) em Fedora Linux nativo.
+Ambiente de simulação de adversários e engenharia de detecção conteinerizado com **OWASP Juice Shop**, **Elasticsearch**, **Filebeat** e **Kibana**, executado sobre Fedora Linux nativo.
 
-## 1. Topologia da Arquitetura
+## 📚 Documentação Técnica
 
-| Componente | Imagem / Versão | Porta | Alocação de Memória | Função |
-|---|---|---|---|---}
-| **OWASP Juice Shop** | `bkimminich/juice-shop` | `3000` | Limite: 400 MB | Alvo vulnerável |
-| **Elasticsearch** | `elasticsearch:8.12.0` | `9200` | Heap: 1 GB / Limite: 1.8 GB | Armazenamento e Ingestão ECS |
-| **Kibana** | `kibana:8.12.0` | `5601` | Limite: 800 MB | Telemetria e Dashboards SIEM |
-| **Filebeat** | `filebeat:8.12.0` | N/A | Limite: 200 MB | Coleta de logs de containers |
+A documentação completa de engenharia está centralizada no diretório `docs/`:
 
-## 2. Peculiaridades de Host (Fedora / SELinux)
+- [Arquitetura e Topologia do Homelab](docs/architecture.md): Especificação de contêineres, volumes SELinux (`:z`), permissões do Filebeat e fluxo de telemetria.
+- [Pipeline de Ingestão e Mapeamento ECS](docs/ingest_pipeline.md): Configuração do Ingest Pipeline (`juice-shop-parser`), regex Grok e normalização para Elastic Common Schema.
+- [Simulação de Ameaças (Red Team)](docs/threat_simulation.md): Mapeamento MITRE ATT&CK (`T1190`, `T1083`, `T1595`), vetores e payloads do script `attack_simulation.py`.
+- [Regras de Detecção e Análise Blue Team](docs/detection_rules.md): Regras analíticas em **KQL** e **ES|QL**, thresholds de anomalia e validação de consultas via API.
 
-- SELinux Labels: Volumes montados no `docker-compose.yml` (`filebeat.ymlX, `/var/lib/docker/containers`, `/var/run/docker.sock`) utilizam sufixos `:z` e `:ro,z` para viabilizar acesso compartilhado seguro pelo container.
-- Permissões Beat: Utilizada a flag `command: ["--strict.perms=false"]` para evitar recusa de execução por permissões de usuário padrão no host (`chmod 644`).
-- OtimizA��,o de Recursos: Configurado com restrições de cgroup (`deploy.resources.limits`) e JVU Heap fixa (`-Xmsg -Xmx1g`) para operação estável em hosts com memória física restrita.
+---
 
-## 3. Guia de Execução
+## 🚀 Inicialização Rápida
 
-**Subir a infraestrutura:**
+### 1. Subir a Infraestrutura
 ```bash
 docker compose up -d
 ```
 
-**Inicializar Pipeline Ingest:**
+### 2. Configurar o Ingest Pipeline no Elasticsearch
 ```bash
+chmod +x setup_pipeline.sh
 ./setup_pipeline.sh
 ```
 
-**Simulação de Ataques (Red Team):**
+### 3. Executar a Simulação de Ataques
 ```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install requests
 python3 attack_simulation.py
 ```
 
-## 4. Engenharia de Deteção (Blue Team)
-
-**SQL Injection Detectado (KQL):**
-```kql
-rule.category: "threat/sql-injection" or error.type: "SQLITE_ERROR"
-``@
-
-**Path Traversal Detectado (KQL):**
-```kql
-rule.category: "threat/path-traversal" or url.path: *..*
-``@
-
-**SumarizA��,o de Ameaças por Categoria e Erro (ES|QL):**
-```sql
-FROM filebeat-*
-| WHERE rule.category IS NOT NULL
-| STATS count = COUNT() BY rule.category, error.type, error.message
-| SORT count DESC
-```
+### 4. Validar Logs no Kibana
+Acesse `http://localhost:5601` e consulte o Data Stream `filebeat-*` via **Discover** ou **ES|QL**.
