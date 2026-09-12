@@ -1,38 +1,18 @@
-# Purple Team Homelab 🛡️⚔️
+# Purple Team Homelab
 
-Ambiente de simulação de adversários e engenharia de detecção conteinerizado com **OWASP Juice Shop**, **Elasticsearch**, **Filebeat** e **Kibana**, executado sobre Fedora Linux nativo.
+Laboratório integrado de simulação de ameaças, coleta de telemetria conteinerizada e engenharia de detecção em ambiente Fedora Linux nativo.
 
-## 📚 Documentação Técnica
+## Documentação Técnica
 
-A documentação completa de engenharia está centralizada no diretório `docs/`:
+- [docs/architecture.md](docs/architecture.md): Topologia de rede, bind mounts, contexto de segurança SELinux (`:z`) e cálculo de latência de ingestão.
+- [docs/ingest_pipeline.md](docs/ingest_pipeline.md): Especificação do Ingest Pipeline (`juice-shop-parser`), mappings ECS e condicionais Grok/Painless.
+- [docs/threat_simulation.md](docs/threat_simulation.md): Mapeamento MITRE ATT&CK (`T1190`, `T1083`, `T1059.007`, `T1595.003`), vetores e taxas de requisição.
+- [docs/detection_rules.md](docs/detection_rules.md): Consultas analíticas KQL/ES|QL, regras de anomalia e formulação matemática de cobertura ($C_{detection}$).
 
-- [Arquitetura e Topologia do Homelab](docs/architecture.md): Especificação de contêineres, volumes SELinux (`:z`), permissões do Filebeat e fluxo de telemetria.
-- [Pipeline de Ingestão e Mapeamento ECS](docs/ingest_pipeline.md): Configuração do Ingest Pipeline (`juice-shop-parser`), regex Grok e normalização para Elastic Common Schema.
-- [Simulação de Ameaças (Red Team)](docs/threat_simulation.md): Mapeamento MITRE ATT&CK (`T1190`, `T1083`, `T1595`), vetores e payloads do script `attack_simulation.py`.
-- [Regras de Detecção e Análise Blue Team](docs/detection_rules.md): Regras analíticas em **KQL** e **ES|QL**, thresholds de anomalia e validação de consultas via API.
+## Inicialização Operacional
 
----
-
-## 🚀 Inicialização Rápida
-
-### 1. Subir a Infraestrutura
 ```bash
 docker compose up -d
-```
-
-### 2. Configurar o Ingest Pipeline no Elasticsearch
-```bash
-chmod +x setup_pipeline.sh
 ./setup_pipeline.sh
-```
-
-### 3. Executar a Simulação de Ataques
-```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install requests
 python3 attack_simulation.py
 ```
-
-### 4. Validar Logs no Kibana
-Acesse `http://localhost:5601` e consulte o Data Stream `filebeat-*` via **Discover** ou **ES|QL**.

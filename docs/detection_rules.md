@@ -1,87 +1,67 @@
-# Regras de Detecção e Análise Blue Team
+# Engenharia de Detecção e Métricas Blue Team
 
-## 1. Ciclo de Detecção Purple Team
+## 1. Fluxo de Análise e Detecção
 
 ```mermaid
-graph TD
-    A[attack_simulation.py] -->|HTTP Request| B[Juice Shop Target]
-    B -->|stdout ndjson| C[Filebeat Collector]
-    C -->|Pipeline: juice-shop-parser| D[Elasticsearch Ingest Node]
-    D -->|Mapeamento ECS| E[(filebeat-* Data Stream)]
-    E -->|KQL / ES|QL Queries| F[Kibana SIEM / Detection Rules]
+flowchart TD
+    DS[(filebeat-* Data Stream)] --> ENGINE{Query Engine}
+    ENGINE -->|Lucene / KQL| KIBANA_DISCOVER[Kibana Discover / Alerts]
+    ENGINE -->|ESQL Tabular Pipeline| ES_ANALYTICS[Analítica Direta Elasticsearch]
+    ES_ANALYTICS --> CALC[Métricas de Detecção Purple Team]
 ```
 
 ---
 
-## 2. Regras de Detecção por Vetor de Ataque
+## 2. Regras de Detecção Formalizadas
 
-### A. SQL Injection (T1190)
-
+### A. Injeção de SQL (T1190)
 * **KQL (Kibana Query Language)**:
   ```kql
-  url.path: (*%27* OR *--* OR *OR%201%3D1* OR *select* OR *union*)
+  rule.category: "threat/sql-injection" OR url.path: (*%27* OR *--* OR *1=1*)
   ```
-
 * **ES|QL (Elasticsearch Query Language)**:
   ```esql
   FROM filebeat-*
-  | WHERE url.path LIKE "*%27*" OR url.path LIKE "*--*" OR url.path LIKE "*1=1*"
-  | STATS count = COUNT(*) BY http.request.method, url.path, http.response.status_code
-  | SORT count DESC
+  | WHERE rule.category == "threat/sql-injection" OR url.path LIKE "*%27*" OR url.path LIKE "*--*"
+  | KEEP @timestamp, http.request.method, url.path, http.response.status_code
+  | SORT @timestamp DESC
   | LIMIT 20
   ```
 
-* **Objetivo Analítico**: Identificar tentativas de subversão booleana e comentários inline em URIs de consulta e autenticação.
-
----
-
-### B. Path Traversal / Arbitrary File Read (T1083)
-
-* **KQL (Kibana Query Language)**:
+### B. Traversal e Acesso a Arquivos Sensíveis (T1083)
+* **KQL**:
   ```kql
-  url.path: (*..%2F* OR *../* OR *etc/passwd* OR *boot.ini*)
+  rule.category: "threat/path-traversal" OR url.path: (*..* OR *%2e%2e* OR *etc/passwd*)
   ```
-
-* **ES|QL (Elasticsearch Query Language)**:
+* **ES|QL**:
   ```esql
   FROM filebeat-*
-  | WHERE url.path LIKE "*../*" OR url.path LIKE "*..%2F*" OR url.path LIKE "*etc/passwd*"
-  | KEEP @timestamp, http.request.method, url.path, http.response.status_code
-  | SORT @timestamp DESC
-  | LIMIT 50
+  | WHERE rule.category == "threat/path-traversal" OR url.path LIKE "*..*" OR url.path LIKE "*%2e%2e*"
+  | STATS incidentes = COUNT(*) BY http.response.status_code, url.path
+  | SORT incidentes DESC
   ```
 
-* **Objetivo Analítico**: Flaggear padrões de escape de diretório codificados ou literais apontando para arquivos do sistema host ou container.
-
----
-
-### C. Enumeração Web / Força Bruta de Rotas (T1595)
-
-* **KQL (Kibana Query Language)**:
-  ```kql
-  http.response.status_code: (404 OR 403) AND url.path: (*/admin* OR */.env* OR */backup* OR */.git*)
-  ```
-
-* **ES|QL (Elasticsearch Query Language - Threshold de Anomalia)**:
+### C. Detecção de Varredura e Enumeração (T1595.003)
+* **ES|QL com Agregação Temporal**:
   ```esql
   FROM filebeat-*
   | WHERE http.response.status_code == 404 OR http.response.status_code == 403
-  | STATS total_erros = COUNT(*) BY http.response.status_code
-  | WHERE total_erros > 5
+  | STATS falhas = COUNT(*) BY client.ip, http.response.status_code
+  | WHERE falhas >= 5
   ```
-
-* **Objetivo Analítico**: Rastrear picos anômalos de respostas `404/403` em uma janela curta, caracterizando varreduras automatizadas por wordlist.
 
 ---
 
-## 3. Validação de Regras via Elasticsearch API
+## 3. Formulação de Métricas de Eficácia Purple Team
 
-Executar consulta ES|QL diretamente no cluster:
+A eficácia de cobertura analítica do laboratório é avaliada matematicamente via Cobertura de Detecção ($C_{detection}$) e Cobertura de Parsing ($C_{parsing}$):
 
-```bash
-curl -s -X POST "http://localhost:9200/_query?format=txt" \
-  -H "Content-Type: application/json" -d '\
-{
-  "query": "FROM filebeat-* | KEEP @timestamp, http.request.method, url.path, http.response.status_code | LIMIT 10"
-}'
-```
+$$C_{detection} = \frac{\sum D_{identificados}}{\sum A_{disparados}} \times 100$$
+
+Onde:
+* $D_{identificados}$: Eventos capturados pelo Ingest Pipeline onde `rule.category` foi preenchido corretamente.
+* $A_{disparados}$: Número total de vetores ofensivos emitidos pelo `attack_simulation.py`.
+
+$$C_{parsing} = \frac{N_{parsed}}{N_{parsed} + N_{on\_failure}} \times 100$$
+
+* **Target de Qualidade**: $C_{parsing} = 100\%$ e $C_{detection} \ge 90\%$.

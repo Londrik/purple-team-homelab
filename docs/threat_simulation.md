@@ -1,61 +1,40 @@
-# Simulação de Ameaças (Red Team) e Matriz MITRE ATT&CK
+# Simulação de Ameaças Red Team e Matriz MITRE ATT&CK
 
-## 1. Fluxo de Execução dos Ataques
+## 1. Topologia de Execução Ofensiva
 
 ```mermaid
-graph LR
-    A[attack_simulation.py] -->|T1190: Injeção SQL| B[GET /rest/products/search?q=]
-    A -->|T1190: Login Bypass| C[POST /rest/user/login]
-    A -->|T1083: Path Traversal| D[GET /public/images/ftp/../../..]
-    A -->|T1595: Enumeração Web| E[GET /admin, /.env, /backup]
-    B --> F[OWASP Juice Shop:3000]
-    C --> F
-    D --> F
-    E --> F
+flowchart LR
+    subgraph Orchestrator[attack_simulation.py]
+        V1[Vetor 1: SQL Injection] -->|HTTP GET/POST| TGT[Target: Juice Shop]
+        V2[Vetor 2: Path Traversal] -->|HTTP GET| TGT
+        V3[Vetor 3: Cross-Site Scripting] -->|HTTP GET| TGT
+        V4[Vetor 4: Web Enumeration] -->|HTTP GET Burst| TGT
+        V5[Vetor 5: BOLA / IDOR] -->|HTTP GET Iterative| TGT
+    end
 ```
 
 ---
 
-## 2. Matriz de Correlação MITRE ATT&CK
+## 2. Mapeamento Tático MITRE ATT&CK
 
-| Tática | Técnica | ID MITRE | Endpoint Alvo | Vetor / Payload |
-| :--- | :--- | :--- | :--- | :--- |
-| **Initial Access** | Exploit Public-Facing Application | `T1190` | `/rest/products/search` | `' OR 1=1--` |
-| **Initial Access / Privilege Escalation** | Exploit Public-Facing Application | `T1190` | `/rest/user/login` | `{"email": "admin@juice-sh.op' OR 1=1--", "password": "foo"}` |
-| **Discovery** | File and Directory Discovery | `T1083` | `/public/images/ftp/...` | `../../../../etc/passwd` |
-| **Reconnaissance** | Active Scanning: Wordlist Scanning | `T1595.003` | Rotas administrativas/arquivos sensíveis | `/.env`, `/admin`, `/package.json.bak` |
-
----
-
-## 3. Especificação Técnica dos Vetores de Ataque
-
-### A. SQL Injection (SQLi) - `T1190`
-* **Mecanismo**: Injeção de predicados booleanos verdadeiros para subverter a query SQL no backend SQLite.
-* **Requisição Exemplo**:
-  ```http
-  GET /rest/products/search?q=%27%20OR%201=1-- HTTP/1.1
-  Host: localhost:3000
-  ```
-* **Comportamento Esperado**: Status HTTP `200 OK` retornando a listagem total de produtos sem filtragem.
-
-### B. Path Traversal / Arbitrary File Read - `T1083`
-* **Mecanismo**: Evasão do diretório público utilizando sequências `../` para alcançar recursos restritos do sistema de arquivos conteinerizado.
-* **Requisição Exemplo**:
-  ```http
-  GET /public/images/ftp/../../../../etc/passwd HTTP/1.1
-  Host: localhost:3000
-  ```
-* **Comportamento Esperado**: Dependendo das regras de sanitização do alvo, retorno de status `200 OK` com conteúdo do arquivo ou `403/500` registrado em log de auditoria.
-
-### C. Enumeração Web e Força Bruta de Diretórios - `T1595`
-* **Mecanismo**: Varredura sequencial de caminhos confidenciais baseada em wordlist para identificar arquivos residuais ou painéis expostos.
-* **Alvos Testados**: `/admin`, `/.env`, `/backup`, `/.git`, `/metrics`.
-* **Comportamento Esperado**: Rajada de respostas com códigos de status HTTP `404 Not Found` e `403 Forbidden` em uma janela curta de tempo.
+| Vetor Técnico | Tática MITRE | Técnica | Subtécnica / ID | Endpoint Alvo | Payload de Exploração |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **SQLi Search** | Initial Access | Exploit Public-Facing App | `T1190` | `/rest/products/search` | `q=' OR 1=1--` |
+| **SQLi Auth** | Initial Access | Exploit Public-Facing App | `T1190` | `/rest/user/login` | `{"email": "admin@juice-sh.op' OR 1=1--"}` |
+| **Path Traversal**| Discovery | File and Directory Discovery | `T1083` | `/public/images/ftp/...` | `../../../../etc/passwd` |
+| **Reflected XSS** | Execution | Command and Scripting Interpreter | `T1059.007` | `/rest/products/search` | `<script>alert(1)</script>` |
+| **Reconnaissance**| Reconnaissance| Active Scanning: Wordlist | `T1595.003` | Rotas de Administração | `/.env`, `/admin`, `/.git/config` |
+| **BOLA / IDOR** | Defense Evasion| Direct Object Reference | OWASP API1 | `/rest/basket/{id}` | Enumeração sequencial de IDs: $[1 \dots 5]$ |
 
 ---
 
-## 4. Execução da Simulação via CLI
+## 3. Dinâmica das Requisições e Comportamento de Erro
 
-```bash
-python3 attack_simulation.py
-```
+* **Cenário SQL Injection**:
+  Injeta uma cláusula tautológica true. No endpoint de busca, a cláusula força o banco SQLite a ignorar a query parametrizada e retornar todo o catálogo de produtos com status `200 OK`.
+* **Cenário Traversal Encoded**:
+  Testa a sanitização do middleware Express servindo arquivos estáticos. O uso de `..%2f` avalia a interpretação de URLs antes de passar pelo resolvedor de arquivos do Node.js.
+* **Taxa de Requisição ($R_{rate}$)**:
+  Para testes de enumeração sem acionar DoS, a taxa instantânea obedece:
+
+$$R_{rate} = \frac{\Delta N_{requests}}{\Delta t} \approx 20\text{ req/s}$$
