@@ -13,60 +13,43 @@ Ambiente automatizado para simulação de ataques web (Red Team) e engenharia de
 
 ## 2. Peculiaridades de Host (Fedora / SELinux)
 
-- SELinux Labels: Volumes mapeados no `docker-compose.yml` (`filebeat.ymlX, `/var/lib/docker/containers`, `/var/run/docker.sock`) utilizam sufixos `:z` e `:ro,z` para viabilizar acesso compartilhado seguro pelo container rootless/SELinux.
-- Permissões Beat: Utilizado flag `command: ["--strict.perms=false"]` para evitar recusa de execução decorrente de permissões de usuário padrão no host (`chmod 644`).
-- Otimização de Recursos: Configurado com restrições de cgroup (`deploy.resources.limits`) e JVM Heap fixa (`-Xms1g -Xmx1g`) para compatibilidade com limites de memória física e compressão zRAM.
+- SELinux Labels: Volumes montados no `docker-compose.yml` (`filebeat.ymlX, `/var/lib/docker/containers`, `/var/run/docker.sock`) utilizam sufixos `:z` e `:ro,z` para viabilizar acesso compartilhado seguro pelo container.
+- Permissões Beat: Utilizada a flag `command: ["--strict.perms=false"]` para evitar recusa de execução por permissões de usuário padrão no host (`chmod 644`).
+- OtimizA��,o de Recursos: Configurado com restrições de cgroup (`deploy.resources.limits`) e JVU Heap fixa (`-Xmsg -Xmx1g`) para operação estável em hosts com memória física restrita.
 
 ## 3. Guia de Execução
 
-### Subir a infraestrutura
+**Subir a infraestrutura:**
 ```bash
 docker compose up -d
 ```
 
-### Validar saúde dos serviços
+**Inicializar Pipeline Ingest:**
 ```bash
-# Cluster health
-curl -s http://localhost:9200/_cluster/health?pretty
-
-# Ingest Pipeline
-curl -s http://localhost:9200/_ingest/pipeline/juice-shop-parser
-
-# Monitoramento de consumo em tempo real
-docker stats --no-stream
+./setup_pipeline.sh
 ```
 
-### Simulação de Ataques (Red Team)
-Execução dos vetores (SQL Injection, Path Traversal, Directory Enumeration):
+**Simulação de Ataques (Red Team):**
 ```bash
 python3 attack_simulation.py
 ```
 
 ## 4. Engenharia de Deteção (Blue Team)
 
-### Pipeline Grok (ECS Mapping)
-O processamento em tempo real mapeia requisições brutas nos campos:
-- `http.request.method` (GET, POST, etc.)
-- `url.path` (caminho e query string da requisição)
-- `http.response.status_code` (código HTTP retornado)
-
-### Queries de Deteção (Kibana / ES|QL)
-
-*&Deteção de Path Traversal:**
+**SQL Injection Detectado (KQL):**
 ```kql
-url.path: *..%2f* or url.path: *../* or url.path: *etc*passwd*
-```
+rule.category: "threat/sql-injection" or error.type: "SQLITE_ERROR"
+``@
 
-**Deteção de SQL Injection via URL:j*
+**Path Traversal Detectado (KQL):**
 ```kql
-url.path: *' OR '* or url.path: *1=1* or url.path: *UNION*SELECT*
-```
+rule.category: "threat/path-traversal" or url.path: *..*
+``@
 
-**Deteção de Enumeração (ES|QL):j*
+**SumarizA��,o de Ameaças por Categoria e Erro (ES|QL):**
 ```sql
 FROM filebeat-*
-| WHERE http.response.status_code == 404
-| STATS count = COUNT() BY source.ip, http.response.status_code
-| WHERE count > 10
+| WHERE rule.category IS NOT NULL
+| STATS count = COUNT() BY rule.category, error.type, error.message
 | SORT count DESC
 ```
