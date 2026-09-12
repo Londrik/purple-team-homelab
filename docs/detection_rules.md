@@ -1,67 +1,52 @@
-# Engenharia de Detecção e Métricas Blue Team
+# Purple Team Detection Rules - OWASP Juice Shop
 
-## 1. Fluxo de Análise e Detecção
-
-```mermaid
-flowchart TD
-    DS[(filebeat-* Data Stream)] --> ENGINE{Query Engine}
-    ENGINE -->|Lucene / KQL| KIBANA_DISCOVER[Kibana Discover / Alerts]
-    ENGINE -->|ESQL Tabular Pipeline| ES_ANALYTICS[Analítica Direta Elasticsearch]
-    ES_ANALYTICS --> CALC[Métricas de Detecção Purple Team]
-```
+Este documento consolida as regras analiticas em KQL e ES|QL mapeadas sobre o schema ECS extraidas pelo pipeline juice-shop-parser.
 
 ---
 
-## 2. Regras de Detecção Formalizadas
+## 1. SQL Injection (URI Search & Login Bypass)
 
-### A. Injeção de SQL (T1190)
-* **KQL (Kibana Query Language)**:
-  ```kql
-  rule.category: "threat/sql-injection" OR url.path: (*%27* OR *--* OR *1=1*)
-  ```
-* **ES|QL (Elasticsearch Query Language)**:
-  ```esql
-  FROM filebeat-*
-  | WHERE rule.category == "threat/sql-injection" OR url.path LIKE "*%27*" OR url.path LIKE "*--*"
-  | KEEP @timestamp, http.request.method, url.path, http.response.status_code
-  | SORT @timestamp DESC
-  | LIMIT 20
-  ```
+### Descricao Tecnica
+Detecta tentativas de injecao SQL explorando operadores booleanos (' OR 1=1), caracteres de comentario (--) e UNION SELECT via parametros de URL.
 
-### B. Traversal e Acesso a Arquivos Sensíveis (T1083)
-* **KQL**:
-  ```kql
-  rule.category: "threat/path-traversal" OR url.path: (*..* OR *%2e%2e* OR *etc/passwd*)
-  ```
-* **ES|QL**:
-  ```esql
-  FROM filebeat-*
-  | WHERE rule.category == "threat/path-traversal" OR url.path LIKE "*..*" OR url.path LIKE "*%2e%2e*"
-  | STATS incidentes = COUNT(*) BY http.response.status_code, url.path
-  | SORT incidentes DESC
-  ```
+### KQL
+url.path: (*%27* or *%20OR%20* or *--* or *UNION* or *1%3D1*) or rule.category: "threat/sql-injection"
 
-### C. Detecção de Varredura e Enumeração (T1595.003)
-* **ES|QL com Agregação Temporal**:
-  ```esql
-  FROM filebeat-*
-  | WHERE http.response.status_code == 404 OR http.response.status_code == 403
-  | STATS falhas = COUNT(*) BY client.ip, http.response.status_code
-  | WHERE falhas >= 5
-  ```
+### ES|QL
+FROM filebeat-*
+| WHERE url.path LIKE "*'" OR url.path LIKE "* OR *" OR url.path LIKE "*--*" OR url.path LIKE "*1=1*" OR rule.category == "threat/sql-injection"
+| STATS count = COUNT(*) BY url.path, http.response.status_code, http.request.method
+| SORT count DESC
 
 ---
 
-## 3. Formulação de Métricas de Eficácia Purple Team
+## 2. Path Traversal / Arbitrary File Read
 
-A eficácia de cobertura analítica do laboratório é avaliada matematicamente via Cobertura de Detecção ($C_{detection}$) e Cobertura de Parsing ($C_{parsing}$):
+### Descricao Tecnica
+Monitora requisicoes com padroes de navegacao reversa de diretorio (../, %2F..) ou exfiltracao de arquivos como /etc/passwd.
 
-$$C_{detection} = \frac{\sum D_{identificados}}{\sum A_{disparados}} \times 100$$
+### KQL
+url.path: (*..%2F* or *../* or *etc*passwd*) or rule.category: "threat/path-traversal"
 
-Onde:
-* $D_{identificados}$: Eventos capturados pelo Ingest Pipeline onde `rule.category` foi preenchido corretamente.
-* $A_{disparados}$: Número total de vetores ofensivos emitidos pelo `attack_simulation.py`.
+### ES|QL
+FROM filebeat-*
+| WHERE url.path LIKE "*../*" OR url.path LIKE "*..%2F*" OR url.path LIKE "*etc/passwd*" OR rule.category == "threat/path-traversal"
+| KEEP @timestamp, http.request.method, url.path, http.response.status_code
+| SORT @timestamp DESC
 
-$$C_{parsing} = \frac{N_{parsed}}{N_{parsed} + N_{on\_failure}} \times 100$$
+---
 
-* **Target de Qualidade**: $C_{parsing} = 100\%$ e $C_{detection} \ge 90\%$.
+## 3. Directory & Endpoint Enumeration (Scanner Spike 404/403)
+
+### Descricao Tecnica
+Identifica scanning ativo e fuzzing (.env, .git, backups) por picos de status HTTP 403 e 404.
+
+### KQL
+http.response.status_code: (403 or 404)
+
+### ES|QL
+FROM filebeat-*
+| WHERE http.response.status_code IN (403, 404)
+| STATS requests_count = COUNT(*) BY http.response.status_code, url.path
+| WHERE requests_count >= 2
+| SORT requests_count DESC
