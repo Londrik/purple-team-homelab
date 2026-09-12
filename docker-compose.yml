@@ -43,6 +43,8 @@ services:
     container_name: juice-shop
     environment:
       - NODE_ENV=development
+      - DEBUG=express:*
+      - LOG_LEVEL=debug
     deploy:
       resources:
         limits:
