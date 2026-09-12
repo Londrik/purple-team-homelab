@@ -39,15 +39,25 @@ flowchart TD
 A classificação categórica ocorre em nível de pipeline no cluster Elasticsearch sem overhead de agentes externos:
 
 * **SQL Injection (`threat/sql-injection`)**:
-  $$\text{Condição} = (\text{error.type} = \text{"SQLITE_ERROR"}) \lor (\text{url.path} \supset [\%27, --, 1=1])$$[cite: 1]
+  ```text
+  (ctx.error?.type == "SQLITE_ERROR") || (ctx.message != null && ctx.message.contains("SQLITE_ERROR")) || (ctx.url?.path != null && (ctx.url.path.contains("%27") || ctx.url.path.contains("--") || ctx.url.path.contains("1=1")))
+  ```
 * **Path Traversal (`threat/path-traversal`)**:
-  $$\text{Condição} = \text{url.path} \supset [.., /etc/passwd, \%2e\%2e]$$
+  ```text
+  (ctx.url?.path != null && (ctx.url.path.contains("..") || ctx.url.path.contains("/etc/passwd") || ctx.url.path.contains("%2e%2e")))
+  ```
 * **Cross-Site Scripting (`threat/xss`)**:
-  $$\text{Condição} = \text{url.path} \supset [<script>, \%3Cscript\%3E, javascript:, onerror]$$
+  ```text
+  (ctx.url?.path != null && (ctx.url.path.contains("<script>") || ctx.url.path.contains("%3Cscript%3E") || ctx.url.path.contains("javascript:") || ctx.url.path.contains("onerror")))
+  ```
 * **Web Enumeration (`threat/enumeration`)**:
-  $$\text{Condição} = (\text{status\_code} \in \{403, 404\}) \land (\text{url.path} \supset [admin, /.env, backup, /.git])$$[cite: 1]
+  ```text
+  (ctx.http?.response?.status_code != null && (ctx.http.response.status_code == 404 || ctx.http.response.status_code == 403) && ctx.url?.path != null && (ctx.url.path.contains("admin") || ctx.url.path.contains("/.env") || ctx.url.path.contains("backup") || ctx.url.path.contains("/.git")))
+  ```
 * **BOLA / IDOR (`threat/bola`)**:
-  $$\text{Condição} = (\text{method} = \text{"GET"}) \land (\text{url.path.startsWith("/rest/basket/")})$$
+  ```text
+  (ctx.url?.path != null && ctx.url.path.startsWith("/rest/basket/") && ctx.http?.request?.method == "GET")
+  ```
 
 ---
 
@@ -61,6 +71,11 @@ curl -s -X POST "http://localhost:9200/_ingest/pipeline/juice-shop-parser/_simul
     {
       "_source": {
         "message": "GET /rest/products/search?q=%27%20OR%201=1-- 200"
+      }
+    },
+    {
+      "_source": {
+        "message": "GET /rest/basket/1 200"
       }
     }
   ]
