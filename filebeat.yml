@@ -1,16 +1,17 @@
-filebeat.inputs:
-  - type: filestream
-    id: juice-shop-filestream
-    paths:
-      - /var/lib/docker/containers/*/*.log
-    parsers:
-      - ndjson:
-          target: ""
-          message_key: log
-
-processors:
-  - add_docker_metadata:
-      host: "unix:///var/run/docker.sock"
+filebeat.autodiscover:
+  providers:
+    - type: docker
+      templates:
+        - condition:
+            contains:
+              docker.container.name: juice-shop
+          config:
+            - type: container
+              paths:
+                - /var/lib/docker/containers/${data.docker.container.id}/*.log
+              output.elasticsearch:
+                hosts: ["http://elasticsearch:9200"]
+                pipeline: "juice-shop-parser"
 
 output.elasticsearch:
   hosts: ["http://elasticsearch:9200"]
