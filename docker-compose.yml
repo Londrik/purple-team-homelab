@@ -38,6 +38,8 @@ services:
   juice-shop:
     image: bkimminich/juice-shop
     container_name: juice-shop
+    environment:
+      - NODE_ENV=development
     deploy:
       resources:
         limits:
