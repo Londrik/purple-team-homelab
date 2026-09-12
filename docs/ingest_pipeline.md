@@ -38,16 +38,16 @@ flowchart TD
 
 A classificação categórica ocorre em nível de pipeline no cluster Elasticsearch sem overhead de agentes externos:
 
-* **SQL Injection (`threat/sql-injection`)**:
-  $$\text{Condição} = (\text{error.type} = \text{"SQLITE\_ERROR"}) \lor (\text{url.path} \supset [\%27, --, 1=1])$$
-* **Path Traversal (`threat/path-traversal`)**:
-  $$\text{Condição} = \text{url.path} \supset [.., /etc/passwd, \%2e\%2e]$$
-* **Cross-Site Scripting (`threat/xss`)**:
-  $$\text{Condição} = \text{url.path} \supset [<script>, \%3Cscript\%3E, javascript:, onerror]$$
-* **Web Enumeration (`threat/enumeration`)**:
-  $$\text{Condição} = (\text{status\_code} \in \{403, 404\}) \land (\text{url.path} \supset [admin, /.env, backup, /.git])$$
-* **BOLA / IDOR (`threat/bola`)**:
-  $$\text{Condição} = (\text{method} = \text{"GET"}) \land (\text{url.path} \sim \text{"^/rest/basket/[0-9]+"})$$
+* **SQL Injection (`threat/sql-injection`)**: 
+  `error.type == "SQLITE_ERROR"` ou `url.path` contém `['`, `--`, `1=1`]
+* **Path Traversal (`threat/path-traversal`)**: 
+  `url.path` contém `[.., /etc/passwd, %2e%2e]`
+* **Cross-Site Scripting (`threat/xss`)**: 
+  `url.path` contém `[<script>, %3Cscript\%3E, javascript:, onerror]`
+* **Web Enumeration (`threat/enumeration`)**: 
+  `status_code` em `{403, 404}` e `url.path` contém `[admin, .env, backup, .git]`
+* **BOLA / IDOR (`threat/bola`)**: 
+  `method == "GET"` e `url.path` corresponde a `/^\/rest\/basket\/[0-9]+/`
 
 ---
 
