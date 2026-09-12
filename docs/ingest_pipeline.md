@@ -1,65 +1,57 @@
-# Pipeline de Ingestão e Mapeamento ECS
+# Engenharia do Ingest Pipeline e Mapeamento ECS
 
-## 1. Fluxo de Parsing e Enriquecimento
+## 1. Fluxo de Parsing e Pipeline Grok
 
 ```mermaid
-graph TD
-    A[Log Bruto Docker JSON] --> B[Filebeat filestream/ndjson]
-    B -->|HTTP Bulk / pipeline: juice-shop-parser| C[Ingest Node: Grok Processor]
-    C -->|Sucesso| D[Mapeamento ECS: http.*, url.*]
-    C -->|Falha| E[on_failure: error.message]
-    D --> F[Data Stream: filebeat-8.12.0]
-    E --> F
+flowchart TD
+    RAW[Raw Container Log JSON: campo message] --> TRIM[Processor: Trim Whitespace]
+    TRIM --> GROK[Processor: Grok Pattern Matching]
+    GROK --> COND1{Match HTTP Access?}
+    COND1 -->|Sim| ECS_HTTP[Popula http.request.method, url.path, http.response.status_code]
+    COND1 -->|Não| COND2{Match Exception/Error?}
+    COND2 -->|Sim| ECS_ERR[Popula error.type, error.message]
+    COND2 -->|Não| ORIG[Popula event.original]
+    ECS_HTTP --> ENRICH[Processors Condicionais Painless: rule.category]
+    ECS_ERR --> ENRICH
+    ORIG --> ENRICH
+    ENRICH --> OUT[(Data Stream: filebeat-8.12.0)]
+    GROK -.->|Exception| ON_FAILURE[Processor: Set error.message fallback]
+    ON_FAILURE --> OUT
 ```
 
 ---
 
-## 2. Estrutura do Ingest Pipeline (`juice-shop-parser`)
+## 2. Mapeamento Formal Elastic Common Schema (ECS)
 
-O pipeline processa a carga útil textual contida no campo `message` originada do contêiner do Juice Shop.
-
-### Configuração do Pipeline (JSON)
-```json
-{
-  "description": "Pipeline de extração e mapeamento ECS para logs HTTP do Juice Shop",
-  "processors": [
-    {
-      "grok": {
-        "field": "message",
-        "patterns": [
-          "%{WORD:http.request.method} %{URIPATHPARAM:url.path} %{NUMBER:http.response.status_code:int}"
-        ],
-        "ignore_missing": true
-      }
-    }
-  ],
-  "on_failure": [
-    {
-      "set": {
-        "field": "error.message",
-        "value": "{{ _ingest.on_failure_message }}"
-      }
-    }
-  ]
-}
-```
-
----
-
-## 3. Mapeamento de Campos (Elastic Common Schema - ECS)
-
-| Campo Bruto (Log Textual) | Campo ECS Target | Tipo | Descrição |
+| Campo Bruto (Juice Shop / Docker) | Destino ECS | Tipo ES | Expressão / Regex Grok |
 | :--- | :--- | :--- | :--- |
-| Verbo HTTP (ex: `GET`, `POST`) | `http.request.method` | `keyword` | Método utilizado na requisição web |
-| Caminho/Query (ex: `/rest/products/search?q=`) | `url.path` | `wildcard` / `keyword` | URI alvo da requisição incluindo parâmetros |
-| Código de Retorno (ex: `200`, `500`) | `http.response.status_code` | `long` | Código de status HTTP convertido para inteiro |
-| Exceção interna | `error.message` | `text` | Mensagem de erro capturada caso o Grok falhe |
+| Método HTTP (`GET`, `POST`) | `http.request.method` | `keyword` | `%{WORD:http.request.method}` |
+| URI / Parâmetros (`/rest/products/search?q=`) | `url.path` | `wildcard` / `keyword` | `%{URIPATHPARAM:url.path}` |
+| Código de Retorno (`200`, `404`) | `http.response.status_code` | `long` | `%{NUMBER:http.response.status_code:int}` |
+| Classe de Exceção (`SQLITE_ERROR`) | `error.type` | `keyword` | `Error: %{WORD:error.type}` |
+| Detalhe do Erro | `error.message` | `text` | `%{GREEDYDATA:error.message}` |
+| Categoria Purple Team | `rule.category` | `keyword` | Condicional Painless (`threat/*`) |
 
 ---
 
-## 4. Validação do Pipeline via API
+## 3. Algoritmo de Categorização Condicional (Ingest Node)
 
-Teste de simulação de ingestão direta no Elasticsearch:
+A classificação categórica ocorre em nível de pipeline no cluster Elasticsearch sem overhead de agentes externos:
+
+* **SQL Injection (`threat/sql-injection`)**:
+  $$\text{Condição} = (\text{error.type} = \text{"SQLITE_ERROR"}) \lor (\text{url.path} \supset [\%27, --, 1=1])$$[cite: 1]
+* **Path Traversal (`threat/path-traversal`)**:
+  $$\text{Condição} = \text{url.path} \supset [.., /etc/passwd, \%2e\%2e]$$
+* **Cross-Site Scripting (`threat/xss`)**:
+  $$\text{Condição} = \text{url.path} \supset [<script>, \%3Cscript\%3E, javascript:, onerror]$$
+* **Web Enumeration (`threat/enumeration`)**:
+  $$\text{Condição} = (\text{status\_code} \in \{403, 404\}) \land (\text{url.path} \supset [admin, /.env, backup, /.git])$$[cite: 1]
+* **BOLA / IDOR (`threat/bola`)**:
+  $$\text{Condição} = (\text{method} = \text{"GET"}) \land (\text{url.path.startsWith("/rest/basket/")})$$
+
+---
+
+## 4. Teste de Bancada via Simulate API
 
 ```bash
 curl -s -X POST "http://localhost:9200/_ingest/pipeline/juice-shop-parser/_simulate" \
@@ -68,7 +60,7 @@ curl -s -X POST "http://localhost:9200/_ingest/pipeline/juice-shop-parser/_simul
   "docs": [
     {
       "_source": {
-        "message": "GET /rest/products/search?q=test 200"
+        "message": "GET /rest/products/search?q=%27%20OR%201=1-- 200"
       }
     }
   ]

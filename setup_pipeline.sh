@@ -57,7 +57,7 @@ curl -s -f -X PUT "${ELASTIC_URL}/_ingest/pipeline/juice-shop-parser" \
       },
       {
         "set": {
-          "if": "ctx.url?.path != null && ctx.url.path.matches('\''^/rest/basket/.*'\'') && ctx.http?.request?.method == '\''GET'\''",
+          "if": "ctx.url?.path != null && ctx.url.path.startsWith('\''/rest/basket/'\'') && ctx.http?.request?.method == '\''GET'\''",
           "field": "rule.category",
           "value": "threat/bola"
         }
