@@ -51,11 +51,12 @@ services:
     image: docker.elastic.co/beats/filebeat:8.12.0
     container_name: filebeat
     user: root
+    privileged: true
     command: ["--strict.perms=false"]
     volumes:
       - ./filebeat.yml:/usr/share/filebeat/filebeat.yml:ro,z
       - /var/lib/docker/containers:/var/lib/docker/containers:ro,z
-      - /var/run/docker.sock:/var/run/docker.sock:ro,z
+      - /var/run/docker.sock:/var/run/docker.sock:z
     deploy:
       resources:
         limits:

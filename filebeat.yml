@@ -1,18 +1,15 @@
-filebeat.autodiscover:
-  providers:
-    - type: docker
-      templates:
-        - condition:
-            contains:
-              docker.container.name: juice-shop
-          config:
-            - type: container
-              paths:
-                - /var/lib/docker/containers/${data.docker.container.id}/*.log
-              output.elasticsearch:
-                hosts: ["http://elasticsearch:9200"]
-                pipeline: "juice-shop-parser"
+filebeat.inputs:
+  - type: filestream
+    id: docker-logs
+    paths:
+      - /var/lib/docker/containers/*/*.log
+    parsers:
+      - container:
+          stream: all
+          format: auto
 
 output.elasticsearch:
   hosts: ["http://elasticsearch:9200"]
   pipeline: "juice-shop-parser"
+
+logging.level: warning
