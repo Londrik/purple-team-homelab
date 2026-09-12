@@ -5,6 +5,15 @@ services:
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    deploy:
+      resources:
+        limits:
+          memory: 1.8G
     ports:
       - "9200:9200"
     networks:
@@ -13,18 +22,26 @@ services:
   kibana:
     image: docker.elastic.co/kibana/kibana:8.12.0
     container_name: kibana
-    ports:
-      - "5601:5601"
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    deploy:
+      resources:
+        limits:
+          memory: 800M
+    ports:
+      - "5601:5601"
     depends_on:
       - elasticsearch
     networks:
       - purple-net
 
   juice-shop:
-    image: bkimminich/juice-shop:latest
+    image: bkimminich/juice-shop
     container_name: juice-shop
+    deploy:
+      resources:
+        limits:
+          memory: 400M
     ports:
       - "3000:3000"
     networks:
@@ -34,11 +51,15 @@ services:
     image: docker.elastic.co/beats/filebeat:8.12.0
     container_name: filebeat
     user: root
-    command: ["filebeat", "-e", "--strict.perms=false"]
+    command: ["--strict.perms=false"]
     volumes:
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./filebeat.yml:/usr/share/filebeat/filebeat.yml:ro,z
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro,z
+      - /var/run/docker.sock:/var/run/docker.sock:ro,z
+    deploy:
+      resources:
+        limits:
+          memory: 200M
     depends_on:
       - elasticsearch
     networks:

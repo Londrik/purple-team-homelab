@@ -1,12 +1,17 @@
 filebeat.inputs:
-- type: container
-  paths:
-    - '/var/lib/docker/containers/*/*.log'
-  processors:
-    - add_docker_metadata: ~
+  - type: filestream
+    id: juice-shop-filestream
+    paths:
+      - /var/lib/docker/containers/*/*.log
+    parsers:
+      - ndjson:
+          target: ""
+          message_key: log
+
+processors:
+  - add_docker_metadata:
+      host: "unix:///var/run/docker.sock"
 
 output.elasticsearch:
   hosts: ["http://elasticsearch:9200"]
-
-setup.kibana:
-  host: "http://kibana:5601"
+  pipeline: "juice-shop-parser"
