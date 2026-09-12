@@ -13,7 +13,7 @@ echo "[*] Configurando Ingest Pipeline: juice-shop-parser..."
 curl -s -f -X PUT "${ELASTIC_URL}/_ingest/pipeline/juice-shop-parser" \
   -H "Content-Type: application/json" \
   -d '{
-    "description": "Parse Juice Shop Logs, HTTP access and Security Exceptions to ECS",
+    "description": "Parse Juice Shop Express dispatch and Security Exceptions to ECS",
     "processors": [
       {
         "trim": {
@@ -25,6 +25,7 @@ curl -s -f -X PUT "${ELASTIC_URL}/_ingest/pipeline/juice-shop-parser" \
         "grok": {
           "field": "message",
           "patterns": [
+            "%{DATA:timestamp} express:router dispatching %{WORD:http.request.method} %{NOTSPACE:url.original}",
             "(?:%{IPORHOST:client.ip}\\s+-\\s+-\\s+\\[[^\\]]+\\]\\s+\")?%{WORD:http.request.method}\\s+%{NOTSPACE:url.original}\\s+(?:HTTP/%{NUMBER})?\"?\\s+%{NUMBER:http.response.status_code:int}",
             "%{WORD:http.request.method}\\s+%{NOTSPACE:url.original}\\s+%{NUMBER:http.response.status_code:int}",
             "Error:\\s+%{WORD:error.type}:\\s+%{GREEDYDATA:error.message}",
@@ -63,14 +64,14 @@ curl -s -f -X PUT "${ELASTIC_URL}/_ingest/pipeline/juice-shop-parser" \
       },
       {
         "set": {
-          "if": "ctx.http?.response?.status_code != null && (ctx.http.response.status_code == 404 || ctx.http.response.status_code == 403) && ctx.url?.original != null && (ctx.url.original.toLowerCase().contains('\''admin'\'') || ctx.url.original.toLowerCase().contains('\''/.env'\'') || ctx.url.original.toLowerCase().contains('\''backup'\'') || ctx.url.original.toLowerCase().contains('\''/.git'\''))",
+          "if": "ctx.url?.original != null && (ctx.url.original.toLowerCase().contains('\''admin'\'') || ctx.url.original.toLowerCase().contains('\''/.env'\'') || ctx.url.original.toLowerCase().contains('\''backup'\'') || ctx.url.original.toLowerCase().contains('\''/.git'\''))",
           "field": "rule.category",
           "value": "threat/enumeration"
         }
       },
       {
         "set": {
-          "if": "ctx.url?.original != null && ctx.url.original.startsWith('\''/rest/basket/'\'') && ctx.http?.request?.method == '\''GET'\''",
+          "if": "ctx.url?.original != null && ctx.url.original.startsWith('\''/rest/basket/'\'')",
           "field": "rule.category",
           "value": "threat/bola"
         }
