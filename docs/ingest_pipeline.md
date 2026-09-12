@@ -39,13 +39,13 @@ flowchart TD
 A classificação categórica ocorre em nível de pipeline no cluster Elasticsearch sem overhead de agentes externos:
 
 * **SQL Injection (`threat/sql-injection`)**:
-  $$\text{Condição} = (\text{error.type} = \text{"SQLITE_ERROR"}) \lor (\text{url.path} \supset [\%27, --, 1=1])$$[cite: 1]
+  $$\text{Condição} = (\text{error.type} = \text{"SQLITE\_ERROR"}) \lor (\text{url.path} \supset [\%27, --, 1=1])$$
 * **Path Traversal (`threat/path-traversal`)**:
   $$\text{Condição} = \text{url.path} \supset [.., /etc/passwd, \%2e\%2e]$$
 * **Cross-Site Scripting (`threat/xss`)**:
   $$\text{Condição} = \text{url.path} \supset [<script>, \%3Cscript\%3E, javascript:, onerror]$$
 * **Web Enumeration (`threat/enumeration`)**:
-  $$\text{Condição} = (\text{status\_code} \in \{403, 404\}) \land (\text{url.path} \supset [admin, /.env, backup, /.git])$$[cite: 1]
+  $$\text{Condição} = (\text{status\_code} \in \{403, 404\}) \land (\text{url.path} \supset [admin, /.env, backup, /.git])$$
 * **BOLA / IDOR (`threat/bola`)**:
   $$\text{Condição} = (\text{method} = \text{"GET"}) \land (\text{url.path} \sim \text{"^/rest/basket/[0-9]+"})$$
 
@@ -55,8 +55,7 @@ A classificação categórica ocorre em nível de pipeline no cluster Elasticsea
 
 ```bash
 curl -s -X POST "http://localhost:9200/_ingest/pipeline/juice-shop-parser/_simulate" \
-  -H "Content-Type: application/json" -d '\
-{
+  -H "Content-Type: application/json" -d '{
   "docs": [
     {
       "_source": {
