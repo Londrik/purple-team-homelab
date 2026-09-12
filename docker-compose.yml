@@ -1,19 +1,10 @@
 services:
-  juice-shop:
-    image: bkimminich/juice-shop:latest
-    container_name: juice-shop
-    ports:
-      - "3000:3000"
-    networks:
-      - purple-net
-
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.12.0
     container_name: elasticsearch
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
     ports:
       - "9200:9200"
     networks:
@@ -31,18 +22,25 @@ services:
     networks:
       - purple-net
 
+  juice-shop:
+    image: bkimminich/juice-shop:latest
+    container_name: juice-shop
+    ports:
+      - "3000:3000"
+    networks:
+      - purple-net
+
   filebeat:
     image: docker.elastic.co/beats/filebeat:8.12.0
     container_name: filebeat
     user: root
     command: ["filebeat", "-e", "--strict.perms=false"]
     volumes:
-      - ./filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./filebeat.yml:/usr/share/filebeat/filebeat.yml:ro,z
     depends_on:
       - elasticsearch
-      - kibana
     networks:
       - purple-net
 
